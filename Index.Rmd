@@ -1,0 +1,447 @@
+---
+title: "Visor Cuadrantes Urbanos"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    theme: cerulean
+    social: menu
+    source_code: embed
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+
+# Paquetes
+
+library(flexdashboard)
+defaultEncoding <- "UTF8"
+library(dplyr)
+library(sf)
+library(terra)
+library(raster)
+library(DT)
+library(ggplot2)
+library(plotly)
+library(leaflet)
+library(leaflet.extras)
+library(leafem)
+library(shiny)
+library(shinydashboard)
+library(shinyWidgets)
+library(rgdal)
+library(tidyverse)
+library(tidyr)
+library(rmapshaper)
+library(leaflegend)
+library(lubridate)
+library(stringr)
+```
+
+```{r}
+# Lectura de los Datos
+
+cantones <-
+  st_read("/vsicurl/https://marcelocubero.github.io/capas_TFG/cantones4.geojson",
+          quiet = TRUE)
+distritos <-
+  st_read("/vsicurl/https://marcelocubero.github.io/capas_TFG/distritos3.geojson",
+          quiet = TRUE)
+
+cuadrantes <-
+  st_read(
+    "/vsicurl/https://marcelocubero.github.io/capas_TFG/cuadrantescr.geojson",
+    quiet = TRUE
+  )
+
+mep <-
+  st_read("/vsicurl/https://marcelocubero.github.io/capas_TFG/mepcr_.geojson",
+          quiet = TRUE)
+
+localidades <-
+  st_read(
+    "/vsicurl/https://marcelocubero.github.io/capas_TFG/localidades_fin.geojson",
+    quiet = TRUE
+  )
+
+
+sf::sf_use_s2(FALSE)
+
+
+```
+
+Column {.sidebar}
+-----------------------------------------------------------------------
+```{r}
+
+# Prueba botón
+# actionButton("reset", "Resetear selecciones")
+
+
+
+
+# APROBACION
+  
+lista_aprobacion <- unique(cuadrantes$aprob)
+lista_aprobacion <- sort(lista_aprobacion)
+lista_aprobacion <- c("Todos", lista_aprobacion)
+
+h2(" Cuadrantes Aprobados")
+selectInput(
+  inputId = "selector_aprob",
+  label = "Aprobado",
+  choices = lista_aprobacion,
+  selected = "Todos"
+)
+
+# CANTONES
+ 
+lista_canton <- unique(cuadrantes$canton)
+lista_canton <- sort(lista_canton)
+lista_canton <- c("Todos", lista_canton)
+
+h2("Cantones")
+selectInput(
+  inputId = "selector_canton",
+  label = "Cantón",
+  choices = lista_canton,
+  selected = "Todos"
+)
+
+# DISTRITOS
+
+lista_distrito <- unique(cuadrantes$distrito)
+lista_distrito <- sort(lista_distrito)
+lista_distrito <- c("Todos", lista_distrito)
+
+h2("Distrito")
+selectInput(
+  inputId = "selector_distrito",
+  label = "Distritos",
+  choices = lista_distrito,
+  selected = "Todos"
+)
+
+
+
+
+
+# Agregar botón para resetear selecciones
+
+actionButton(inputId = "resetear", label = "Nueva búsqueda")
+
+# Función para resetear selecciones
+
+resetear_selecciones <- function() {
+  updateSelectInput(session, "selector_aprob", selected = "Todos")
+  updateSelectInput(session, "selector_canton", selected = "Todos")
+  updateSelectInput(session, "selector_distrito", selected = "Todos")
+}
+
+# Observador de eventos para el botón
+
+observeEvent(input$resetear, {
+  resetear_selecciones()
+})
+
+
+#sidebarPanel(
+  sliderInput("opacity", "Transparencia:",
+              min = 0, max = 1, value = 1, step = 0.1)
+#)
+
+
+
+
+
+filtrarRegistros <-  reactive({
+  
+  
+  cuadrantes_f <-
+    cuadrantes  
+
+# Filtrar aprobadas
+  if (input$selector_aprob != "Todos") {
+     cuadrantes_f <-
+        cuadrantes_f %>%
+        filter(aprob == input$selector_aprob)
+    
+# Cambiar cantones de acuerdo a selección de aprobadas
+     if (input$selector_canton == "Todos"){
+        cantones_grupo <-
+          filter(
+            cuadrantes,
+            aprob == input$selector_aprob
+        )
+        lista_canton_grupo <- unique(cantones_grupo$canton)
+        lista_canton_grupo <- sort(lista_canton_grupo)
+        lista_canton_grupo <- c("Todos", lista_canton_grupo)
+      
+      updateSelectInput(
+          session,
+          "selector_canton",
+          label= "Cantón",
+          choice= lista_canton_grupo,
+          selected = "Todos"
+      )
+    }
+  } else {
+      cantones_grupo <- cuadrantes
+      lista_canton_grupo <- unique(cantones_grupo$canton)
+      lista_canton_grupo <- sort(lista_canton_grupo)
+      lista_canton_grupo <- c("Todos", lista_canton_grupo)
+    
+      updateSelectInput(
+                    session,
+                    "selector_canton",
+                    label= "Cantón",
+                    choice= lista_canton_grupo,
+                    selected = "Todos"
+      )
+  }
+  
+# Filtrar cantones
+     
+  if (input$selector_canton != "Todos") {
+    cuadrantes_f <-
+      cuadrantes_f %>%
+      filter(canton == input$selector_canton)
+    
+# Cambiar distritos de acuerdo a selección de cantones
+  
+   if (input$selector_distrito == "Todos"){
+        distrito_grupo <-
+          filter(
+            cuadrantes,
+            canton == input$selector_canton
+        )
+        lista_distrito_grupo <- unique(distrito_grupo$distrito)
+        lista_distrito_grupo <- sort(lista_distrito_grupo)
+        lista_distrito_grupo <- c("Todos", lista_distrito_grupo)
+      
+      updateSelectInput(
+          session,
+          "selector_distrito",
+          label= "Distrito",
+          choice= lista_distrito_grupo,
+          selected = "Todos"
+      )
+    }
+  } else {
+      distrito_grupo <- cuadrantes
+      lista_distrito_grupo <- unique(distrito_grupo$distrito)
+      lista_distrito_grupo <- sort(lista_distrito_grupo)
+      lista_distrito_grupo <- c("Todos", lista_distrito_grupo)
+    
+      updateSelectInput(
+                    session,
+                    "selector_distrito",
+                    label= "Distrito",
+                    choice= lista_distrito_grupo,
+                    selected = "Todos"
+      )
+  }
+  
+# Filtrar distritos
+
+  if (input$selector_distrito != "Todos") {
+    cuadrantes_f <-
+      cuadrantes_f %>%
+      filter(distrito == input$selector_distrito)
+  }
+  return(cuadrantes_f)
+}
+)
+
+ 
+```
+
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+### Visor
+
+```{r}
+
+#Paletas e iconos
+
+colores <- c("#4DAF4A" , "#B2FFFC", "#FFFF33")
+c_zona <- levels(as.factor(cuadrantes$nomb_zona))
+paleta <- colorFactor(palette = colores, domain = c_zona)
+
+html_legend <- "<img src='https://marcelocubero.github.io/capas_TFG/icon_loc.png'style='width:20px;height:20px;'> Localidades <br/> 
+
+<img src='https://marcelocubero.github.io/capas_TFG/icon_mep.png'style='width:20px;height:20px;'> Centros Educativos
+" 
+
+renderLeaflet({
+  registros <-
+    filtrarRegistros()
+  
+  mep_c <- mep [registros, , op = st_within]
+  localidades_c <- localidades [registros, , op = st_within]
+  cantones_c <- cantones [registros, , op = st_intersects]
+  distritos_c <- distritos [registros, , op = st_intersects]
+  
+  leaflet() %>%
+    addTiles(group = "OSM") %>%
+    addProviderTiles(providers$CartoDB.DarkMatter, group = "CartoDB-Black") %>%
+    addProviderTiles("Esri.WorldImagery", group = "ESRI") %>% 
+    
+    addPolygons(
+      data = registros,
+      color = ~ paleta(nomb_zona),
+      fillOpacity = input$opacity,
+      weight = 1,
+      opacity = 1,
+      stroke = TRUE,
+      group = "Cuadrantes",
+      popup = paste0("<strong> Cuadrante: <strong/>",
+                     registros$poblado)
+    ) %>%
+    
+    addLegend(
+      pal = paleta,
+      values = registros$nomb_zona,
+      opacity = 1,
+      title = "Zona"
+    ) %>%
+    
+ 
+    addMarkers(
+      data= mep_c,
+      lng= ~LONGITUD,
+      lat= ~LATITUD,
+      icon= list(
+                  iconUrl="https://marcelocubero.github.io/capas_TFG/icon_mep.png",
+                  iconSize = c(20,20)),
+                   popup = paste0(mep_c$Nivel,
+                     ":<br>",
+                     mep_c$Nombre),
+      group = "Centros Educativos",
+      clusterOptions = markerClusterOptions()
+    ) %>%
+    
+     addMarkers(
+      data= localidades_c,
+      lng= ~x,
+      lat= ~y,
+      icon= list(
+                  iconUrl="https://marcelocubero.github.io/capas_TFG/icon_loc.png",
+                  iconSize = c(20,20)),
+                   popup = paste0(localidades_c$nombre),
+      group = "Localidades",
+      clusterOptions = markerClusterOptions()
+    ) %>%
+    
+     addControl(html = html_legend,
+                position ="topright"
+                ) %>%
+
+#    addPolygons(
+#      data = cantones_c,
+#      color = "#00008B",
+#      fillOpacity = 0,
+#      weight = 1,
+#      opacity = 1,
+#      stroke = TRUE,
+#      group = "Cantones",
+#      popup = paste0("<strong> Cantón: <strong/>",
+#                     cantones_c$canton)
+#    ) %>%
+    
+#    addPolygons(
+#      data = distritos_c,
+#      color = "#00008B",
+#      fillOpacity = 0,
+#      weight = 1,
+#      opacity = 1,
+#      stroke = TRUE,
+#      group = "Distritos"
+#    ) %>%
+    
+    hideGroup("Cantones"
+     )%>%
+    
+     hideGroup("Distritos"
+     )%>%
+  
+    addLayersControl(
+      "bottomleft",
+      baseGroups = c("OSM", "CartoDB-Black", "ESRI"),
+      overlayGroups = c(
+        "Cuadrantes" ,
+        "Centros Educativos" ,
+        "Localidades",
+        "Cantones",
+        "Distritos"
+      ),
+      options = layersControlOptions(collapsed = TRUE)
+    ) %>%
+    
+    addScaleBar("bottomright") %>%
+    addMiniMap() %>%
+    addResetMapButton() %>%
+    addFullscreenControl() %>%
+    addControlGPS() %>%
+    addSearchOSM() %>%
+    addMouseCoordinates() 
+  
+})
+
+
+
+```
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+### Tabla
+
+```{r}
+
+renderDT({
+  registros <- filtrarRegistros()
+  
+  registros %>%
+    st_drop_geometry() %>%
+    select(
+      Aprobado = aprob,
+      Cantón = canton,
+      Distrito= distrito,
+      Tipo_de_Zona= nomb_zona,
+      Área_en_m2 = area_m2
+      
+    ) %>%
+    datatable(
+      rownames = FALSE,
+      extensions = c("Buttons"),
+                options = list(
+                    pageLength = 10,
+                    searchHighlight = TRUE,
+                    lengthMenu = list(
+                        c(10, 20, 30, 40, 50, 100, -1),
+                        c(10, 20, 30, 40, 50, 100, "Todos")
+                    ),
+                    dom = 'Bfrtlip',
+                    language = list(url = "//cdn.datatables.net/plug-ins/1.10.11/i18n/Spanish.json"),
+                    buttons = list(
+                        list(extend = 'copy', text = 'Copiar'),
+                        list(extend = 'csv', text = 'CSV'),
+                        list(extend = 'csv', text = 'Excel'),
+                        list(extend = 'pdf', text = 'PDF')
+                    )
+                )
+    )
+})
+
+
+```
+
+### Información
+
+```{r}
+
+```
+
+![](https://marcelocubero.github.io/capas_TFG/5.png){width='350px'} 
+![](https://marcelocubero.github.io/capas_TFG/INVU.jpg){width='350px'} 
